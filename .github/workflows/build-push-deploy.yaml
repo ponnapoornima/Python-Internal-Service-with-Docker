@@ -3,16 +3,18 @@ name: Deploy Python Internal Service to VM
 on:
   push:
     branches:
-      - developer
+      - developer  # change to your deployment branch
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # Step 2: Deploy to VM via SSH
       - name: Deploy to VM
         uses: appleboy/ssh-action@v0.1.5
         with:
@@ -20,60 +22,36 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            echo "🚀 Connecting to VM..."
+            echo "🚀 Starting deployment..."
 
             cd /home/${{ secrets.VM_USER }}
 
-            # Setup SSH key for GitHub repo
-            echo "${{ secrets.GITHUB_DEPLOY_KEY }}" > deploy_key
-            chmod 600 deploy_key
-            eval "$(ssh-agent -s)"
-            ssh-add deploy_key
-
-            # Add GitHub to known_hosts
-            mkdir -p ~/.ssh
-            ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-            # Clone repo if it doesn't exist
+            # Clone or update repo
             if [ ! -d "python-internal-service" ]; then
               git clone git@github.com:CleavelandPrice-3KT/Automated-DCR-Backend-Service.git python-internal-service
             fi
-
             cd python-internal-service
-
-            echo "📥 Pulling latest code..."
             git pull origin main
 
-            echo "📦 Installing system packages..."
-            sudo apt update
-            sudo apt install -y python3 python3-venv python3-pip git
+            # Install dependencies
+            sudo apt update && sudo apt install -y python3 python3-venv python3-pip git
 
-            echo "🐍 Setting up Python virtual environment..."
+            # Setup virtual environment
             if [ ! -d "venv" ]; then
               python3 -m venv venv
             fi
             source venv/bin/activate
-
-            echo "📥 Installing Python dependencies..."
             pip install --upgrade pip
             pip install -r requirements.txt
 
-            echo "🔐 Exporting secrets..."
-            export MSSQL_HOST="${{ secrets.MSSQL_HOST }}"
-            export MSSQL_DATABASE="${{ secrets.MSSQL_DATABASE }}"
-            export MSSQL_USERNAME="${{ secrets.MSSQL_USERNAME }}"
-            export MSSQL_PASSWORD="${{ secrets.MSSQL_PASSWORD }}"
-            export EXTERNAL_API_BASE_URL="${{ secrets.EXTERNAL_API_BASE_URL }}"
-            export APIM_SUBSCRIPTION_KEY="${{ secrets.APIM_SUBSCRIPTION_KEY }}"
-
-            echo "🔐 Creating .env file..."
+            # Create .env using secrets
             cat > .env <<EOF
-MSSQL_HOST=$MSSQL_HOST
-MSSQL_DATABASE=$MSSQL_DATABASE
-MSSQL_USERNAME=$MSSQL_USERNAME
-MSSQL_PASSWORD=$MSSQL_PASSWORD
+MSSQL_HOST=${{ secrets.MSSQL_HOST }}
+MSSQL_DATABASE=${{ secrets.MSSQL_DATABASE }}
+MSSQL_USERNAME=${{ secrets.MSSQL_USERNAME }}
+MSSQL_PASSWORD=${{ secrets.MSSQL_PASSWORD }}
 
-EXTERNAL_API_BASE_URL=$EXTERNAL_API_BASE_URL
+EXTERNAL_API_BASE_URL=${{ secrets.EXTERNAL_API_BASE_URL }}
 
 POLL_INTERVAL_SECONDS=5
 MAX_CONCURRENT_JOBS=3
@@ -81,7 +59,7 @@ REQUEST_TIMEOUT_SECONDS=120
 MAX_RETRIES=3
 RETRY_DELAY_SECONDS=5.0
 
-APIM_SUBSCRIPTION_KEY=$APIM_SUBSCRIPTION_KEY
+APIM_SUBSCRIPTION_KEY=${{ secrets.APIM_SUBSCRIPTION_KEY }}
 
 LOG_LEVEL=INFO
 LOG_FILE=logs/service.log
@@ -89,7 +67,7 @@ EOF
 
             chmod 600 .env
 
-            echo "🔄 Running Python service..."
+            # Restart service
             pkill -f main.py || true
             nohup python3 main.py > service.log 2>&1 &
 
