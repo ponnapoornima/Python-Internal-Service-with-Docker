@@ -1,23 +1,22 @@
-name: Deploy Python Internal Polling Service to VM
+name: Deploy Python Internal Service to VM
 
 on:
   push:
     branches:
-      - developer
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - developer   # Change to your deployment branch
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Deploy and Start Polling Service on VM
-        uses: appleboy/ssh-action@v0.1.6
+      # Step 2: SSH into VM and deploy service
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v0.1.5
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
@@ -25,59 +24,62 @@ jobs:
           port: 22
           script: |
             VM_USER="${{ secrets.VM_USER }}"
-            APP_DIR="/home/$VM_USER/Internal-Python-Service"
-            SERVICE_FILE="/etc/systemd/system/python-polling.service"
+            APP_DIR="/home/$VM_USER/python-internal-service"
 
             cd /home/$VM_USER
 
             # Clone repo if missing
-            if [ ! -d "Internal-Python-Service" ]; then
-              git clone https://github.com/CleavelandPrice-3KT/Internal-Python-Service.git
+            if [ ! -d "python-internal-service" ]; then
+              git clone git@github.com:CleavelandPrice-3KT/Automated-DCR-Backend-Service.git python-internal-service
             fi
 
-            cd Internal-Python-Service
+            cd python-internal-service
 
-            # Reset to latest developer branch
+            echo "📥 Pulling latest code..."
             git fetch --all
             git reset --hard origin/developer
 
-            # Install dependencies
+            echo "📦 Installing system packages..."
             sudo apt update
             sudo apt install -y python3 python3-venv python3-pip git
 
-            # Create virtual environment if missing
+            echo "🐍 Setting up Python virtual environment..."
             if [ ! -d "venv" ]; then
               python3 -m venv venv
             fi
-
-            # Activate venv and install Python packages
             source venv/bin/activate
+
+            echo "📥 Installing Python dependencies..."
             pip install --upgrade pip
             pip install -r requirements.txt
 
-            # Create or update systemd service line by line
-            echo "[Unit]" | sudo tee $SERVICE_FILE
-            echo "Description=Python Internal Polling Service" | sudo tee -a $SERVICE_FILE
-            echo "After=network.target" | sudo tee -a $SERVICE_FILE
-            echo "" | sudo tee -a $SERVICE_FILE
-            echo "[Service]" | sudo tee -a $SERVICE_FILE
-            echo "User=$VM_USER" | sudo tee -a $SERVICE_FILE
-            echo "WorkingDirectory=$APP_DIR" | sudo tee -a $SERVICE_FILE
-            echo "ExecStart=$APP_DIR/venv/bin/python main.py" | sudo tee -a $SERVICE_FILE
-            echo "Restart=always" | sudo tee -a $SERVICE_FILE
-            echo "RestartSec=5" | sudo tee -a $SERVICE_FILE
-            echo "" | sudo tee -a $SERVICE_FILE
-            echo "[Install]" | sudo tee -a $SERVICE_FILE
-            echo "WantedBy=multi-user.target" | sudo tee -a $SERVICE_FILE
+            echo "🔐 Creating .env file from GitHub Secrets..."
+            cat > .env <<EOF
+MSSQL_HOST=${{ secrets.MSSQL_HOST }}
+MSSQL_DATABASE=${{ secrets.MSSQL_DATABASE }}
+MSSQL_USERNAME=${{ secrets.MSSQL_USERNAME }}
+MSSQL_PASSWORD=${{ secrets.MSSQL_PASSWORD }}
 
-            # Reload systemd and restart service
-            sudo systemctl daemon-reload
-            sudo systemctl enable python-polling.service
-            sudo systemctl restart python-polling.service
+EXTERNAL_API_BASE_URL=${{ secrets.EXTERNAL_API_BASE_URL }}
 
-            # Show status
-            sudo systemctl status python-polling.service --no-pager
+POLL_INTERVAL_SECONDS=5
+MAX_CONCURRENT_JOBS=3
+REQUEST_TIMEOUT_SECONDS=120
+MAX_RETRIES=3
+RETRY_DELAY_SECONDS=5.0
 
-            # Tail last 50 lines of logs
-            echo "Last 50 lines of polling service logs:"
-            sudo journalctl -u python-polling.service -n 50 --no-pager
+APIM_SUBSCRIPTION_KEY=${{ secrets.APIM_SUBSCRIPTION_KEY }}
+
+LOG_LEVEL=INFO
+LOG_FILE=logs/service.log
+EOF
+
+            chmod 600 .env
+
+            echo "🔄 Restarting Python service..."
+            # Stop previous instance if running
+            pkill -f main.py || true
+            # Start new instance in background
+            nohup python3 main.py > service.log 2>&1 &
+
+            echo "✅ Deployment completed successfully!"
