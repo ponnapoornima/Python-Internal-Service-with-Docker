@@ -3,7 +3,7 @@ name: Deploy Python Internal Polling Service to VM
 on:
   push:
     branches:
-      - developer   # change if needed
+      - developer  # change if needed
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # fix Node.js 20 deprecation warning
@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v3
 
       # Step 2: SSH and deploy
-      - name: Deploy to VM
+      - name: Deploy and Start Polling Service on VM
         uses: appleboy/ssh-action@v0.1.6
         with:
           host: ${{ secrets.VM_HOST }}
@@ -53,9 +53,9 @@ jobs:
             pip install --upgrade pip
             pip install -r requirements.txt
 
-            # Create systemd service
+            # Create or update systemd service
             SERVICE_FILE="/etc/systemd/system/python-polling.service"
-            sudo tee $SERVICE_FILE > /dev/null <<EOL
+            sudo tee $SERVICE_FILE > /dev/null << 'EOL'
 [Unit]
 Description=Python Internal Polling Service
 After=network.target
