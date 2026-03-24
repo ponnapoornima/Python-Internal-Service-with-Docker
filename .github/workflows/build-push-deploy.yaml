@@ -1,63 +1,100 @@
-name: Build and Deploy Container App
+name: Deploy Python Internal Service to VM
 
 on:
   push:
     branches:
-      - developer
-
-permissions:
-  id-token: write
-  contents: read
+      - developer   # Change if you want dev branch deployment
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
-    env:
-      ACR_NAME: cpimageregistry1
-      RESOURCE_GROUP: CleavelandPrice-RG-Dev
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    # Step 1: Checkout local workflow repo (CI purposes)
+    - name: Checkout Repository
+      uses: actions/checkout@v3
 
-      - name: Install latest Azure CLI
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+    # Step 2: Connect to VM and deploy service
+    - name: Deploy to VM
+      uses: appleboy/ssh-action@v0.1.5
+      with:
+        host: ${{ secrets.VM_HOST }}           # VM public IP
+        username: ${{ secrets.VM_USER }}       # VM username
+        key: ${{ secrets.SSH_PRIVATE_KEY }}    # SSH private key for VM
+        script: |
+          echo "🚀 Connecting to VM..."
 
-      - name: Azure Login
-        uses: azure/login@v1
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          cd /home/${{ secrets.VM_USER }}
 
-      - name: Set environment variables
-        run: |
-          echo "IMAGE_REPO=python-internal-service" >> $GITHUB_ENV
-          echo "ENV_FILE=.env.dev" >> $GITHUB_ENV
-          echo "CONTAINER_APP=python-internal-service" >> $GITHUB_ENV
-          echo "RESOURCE_GROUP=CleavelandPrice-RG-Dev" >> $GITHUB_ENV
+          # Setup SSH key for GitHub repo
+          echo "${{ secrets.GITHUB_DEPLOY_KEY }}" > deploy_key
+          chmod 600 deploy_key
+          eval "$(ssh-agent -s)"
+          ssh-add deploy_key
 
-      - name: Login to ACR
-        run: |
-          az acr login --name $ACR_NAME
+          # Add GitHub to known_hosts to avoid prompt
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-      - name: Build Docker Image
-        run: |
-          docker build \
-            --no-cache \
-            --build-arg ENV_FILE=${ENV_FILE} \
-            -t $ACR_NAME.azurecr.io/${IMAGE_REPO}:latest .
+          # Clone repo if it doesn't exist
+          if [ ! -d "python-internal-service" ]; then
+            git clone git@github.com:CleavelandPrice-3KT/Automated-DCR-Backend-Service.git python-internal-service
+          fi
 
-      - name: Push Docker Image
-        run: |
-          docker push $ACR_NAME.azurecr.io/${IMAGE_REPO}:latest
+          cd python-internal-service
 
-      - name: Deploy to Azure Container App
-        run: |
-          az containerapp update \
-            --name $CONTAINER_APP \
-            --resource-group $RESOURCE_GROUP \
-            --image $ACR_NAME.azurecr.io/${IMAGE_REPO}:latest \
-            --set-env-vars REDEPLOY=$(date +%s)
+          echo "📥 Pulling latest code..."
+          git pull origin main
+
+          echo "📦 Installing system packages..."
+          sudo apt update
+          sudo apt install -y python3 python3-venv python3-pip git
+
+          echo "🐍 Setting up Python virtual environment..."
+          if [ ! -d "venv" ]; then
+            python3 -m venv venv
+          fi
+          source venv/bin/activate
+
+          echo "📥 Installing Python dependencies..."
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+          echo "🔐 Creating .env file with GitHub Secrets..."
+          cat > .env <<EOF
+# ============================================================
+# Python Internal Service — Environment Configuration
+# ============================================================
+
+# SQL Server
+MSSQL_HOST=${{ secrets.MSSQL_HOST }}
+MSSQL_DATABASE=${{ secrets.MSSQL_DATABASE }}
+MSSQL_USERNAME=${{ secrets.MSSQL_USERNAME }}
+MSSQL_PASSWORD=${{ secrets.MSSQL_PASSWORD }}
+
+# External API
+EXTERNAL_API_BASE_URL=${{ secrets.EXTERNAL_API_BASE_URL }}
+
+# Polling / Service Behaviour
+POLL_INTERVAL_SECONDS=5
+MAX_CONCURRENT_JOBS=3
+REQUEST_TIMEOUT_SECONDS=120
+MAX_RETRIES=3
+RETRY_DELAY_SECONDS=5.0
+
+# APIM Subscription Key
+APIM_SUBSCRIPTION_KEY=${{ secrets.APIM_SUBSCRIPTION_KEY }}
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FILE=logs/service.log
+EOF
+
+          chmod 600 .env
+
+          echo "🔄 Running Python service..."
+          # Stop previous instance if running (optional)
+          pkill -f main.py || true
+          nohup python3 main.py > service.log 2>&1 &
+
+          echo "✅ Deployment completed successfully!"
