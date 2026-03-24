@@ -1,32 +1,31 @@
-name: Deploy Python Internal Service to VM
+name: Deploy Python Internal Polling Service to VM
 
 on:
   push:
     branches:
-      - developer   # change to your deployment branch
+      - developer   # change if needed
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # avoid Node.js 20 deprecation warning
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # fix Node.js 20 deprecation warning
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
+      # Step 1: Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Step 2: Deploy to VM over SSH
+      # Step 2: SSH and deploy
       - name: Deploy to VM
         uses: appleboy/ssh-action@v0.1.6
         with:
-          host: ${{ secrets.VM_HOST }}           # VM public IP
-          username: ${{ secrets.VM_USER }}       # VM SSH user
-          key: ${{ secrets.SSH_PRIVATE_KEY }}    # Private key contents
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            # Navigate to home
             cd ~
 
             # Clone repo if not exists
@@ -40,28 +39,54 @@ jobs:
             git fetch --all
             git reset --hard origin/developer
 
-            # Update system and install dependencies
+            # Install dependencies
             sudo apt update
             sudo apt install -y python3 python3-venv python3-pip git
 
-            # Create virtual environment if not exists
+            # Create virtual environment if missing
             if [ ! -d "venv" ]; then
               python3 -m venv venv
             fi
 
-            # Activate virtual environment
+            # Activate virtual environment and install requirements
             source venv/bin/activate
-
-            # Upgrade pip and install requirements
             pip install --upgrade pip
             pip install -r requirements.txt
 
-            # Kill any existing Python service process
-            pkill -f main.py || true
+            # Create systemd service
+            SERVICE_FILE="/etc/systemd/system/python-polling.service"
+            sudo tee $SERVICE_FILE > /dev/null <<EOL
+[Unit]
+Description=Python Internal Polling Service
+After=network.target
 
-            # Start the service in background and log output
-            nohup python main.py > app.log 2>&1 &
+[Service]
+User=${{ secrets.VM_USER }}
+WorkingDirectory=/home/${{ secrets.VM_USER }}/Internal-Python-Service
+ExecStart=/home/${{ secrets.VM_USER }}/Internal-Python-Service/venv/bin/python main.py
+Restart=always
+RestartSec=5
 
-            # Print confirmation
-            echo "Deployment complete. Current running process:"
-            pgrep -fl main.py
+[Install]
+WantedBy=multi-user.target
+EOL
+
+            # Reload systemd, enable & restart service
+            sudo systemctl daemon-reload
+            sudo systemctl enable python-polling.service
+            sudo systemctl restart python-polling.service
+
+            # Confirm status
+            sudo systemctl status python-polling.service --no-pager
+
+      # Step 3: Tail logs for confirmation (optional)
+      - name: Tail polling service logs
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            echo "Tailing last 50 lines of polling service logs..."
+            sudo journalctl -u python-polling.service -n 50 --no-pager
