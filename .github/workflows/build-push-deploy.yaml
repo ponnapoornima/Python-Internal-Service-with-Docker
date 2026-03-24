@@ -1,4 +1,4 @@
-name: Deploy Python Internal Service to VM
+name: Deploy Python Internal Service to VMM
 
 on:
   push:
