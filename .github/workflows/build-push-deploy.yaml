@@ -3,77 +3,53 @@ name: Deploy Python Internal Service to VM
 on:
   push:
     branches:
-      - developer  # change to your deployment branch
+      - developer   # change to your deployment branch
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repository
+      # Step 1: Checkout the repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Step 2: Deploy to VM via SSH
+      # Step 2: Copy project to remote VM and run deployment
       - name: Deploy to VM
-        uses: appleboy/ssh-action@v0.1.5
+        uses: appleboy/ssh-action@v0.1.6
         with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ secrets.VM_HOST }}               # e.g., 20.197.0.254
+          username: ${{ secrets.VM_USER }}           # e.g., azureuser
+          key: ${{ secrets.VM_PEM_KEY }}             # private key contents
+          port: 22
           script: |
-            echo "🚀 Starting deployment..."
+            # Navigate to home directory
+            cd ~
 
-            cd /home/${{ secrets.VM_USER }}
-
-            # Clone or update repo
-            if [ ! -d "python-internal-service" ]; then
-              git clone git@github.com:CleavelandPrice-3KT/Automated-DCR-Backend-Service.git python-internal-service
+            # Clone repo (skip if folder exists)
+            if [ ! -d "Internal-Python-Service" ]; then
+              git clone https://github.com/CleavelandPrice-3KT/Internal-Python-Service.git
             fi
-            cd python-internal-service
-            git pull origin main
 
-            # Install dependencies
-            sudo apt update && sudo apt install -y python3 python3-venv python3-pip git
+            cd Internal-Python-Service
 
-            # Setup virtual environment
-            if [ ! -d "venv" ]; then
-              python3 -m venv venv
-            fi
+            # Pull latest changes
+            git fetch --all
+            git reset --hard origin/developer
+
+            # Update system and install dependencies
+            sudo apt update
+            sudo apt install -y python3 python3-venv python3-pip git
+
+            # Create virtual environment
+            python3 -m venv venv
+
+            # Activate virtual environment
             source venv/bin/activate
+
+            # Install Python requirements
             pip install --upgrade pip
             pip install -r requirements.txt
 
-            # Create .env using secrets
-            cat > .env <<EOF
-            echo "🔐 Creating .env file with GitHub Secrets..."
-            cat > .env <<EOF
-# ============================================================
-# Python Internal Service — Environment Configuration
-# ============================================================
-
-# SQL Server
-MSSQL_HOST=${{secrets.MSSQL_HOST}}
-MSSQL_DATABASE=${{secrets.MSSQL_DATABASE}}
-MSSQL_USERNAME=${{secrets.MSSQL_USERNAME}}
-MSSQL_PASSWORD=${{secrets.MSSQL_PASSWORD}}
-
-# External API
-EXTERNAL_API_BASE_URL=${{secrets.EXTERNAL_API_BASE_URL}}
-
-# Polling / Service Behaviour
-POLL_INTERVAL_SECONDS=5
-MAX_CONCURRENT_JOBS=3
-REQUEST_TIMEOUT_SECONDS=120
-MAX_RETRIES=3
-RETRY_DELAY_SECONDS=5.0
-
-# APIM Subscription Key
-APIM_SUBSCRIPTION_KEY=${{secrets.APIM_SUBSCRIPTION_KEY}}
-
-# Logging
-LOG_LEVEL=INFO
-LOG_FILE=logs/service.log
-EOF
-
-            chmod 600 .env
+            # Run the application
+            nohup python main.py > app.log 2>&1 &
