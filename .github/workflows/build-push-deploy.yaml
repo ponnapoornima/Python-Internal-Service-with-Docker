@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout workflow repo (optional for CI)
+      # Step 1: Checkout workflow repo
       - name: Checkout Repository
         uses: actions/checkout@v3
 
