@@ -1,4 +1,4 @@
-name: Deploy Python Internal Service to VMM
+name: Deploy Python Internal Service to VM
 
 on:
   push:
@@ -97,7 +97,14 @@ jobs:
             sudo systemctl enable python-polling.service
             sudo systemctl restart python-polling.service
 
-            echo "📄 Polling service status (last 50 lines):"
-            sudo journalctl -u python-polling.service -n 50 --no-pager
+            echo "📄 Checking service status..."
+            sudo systemctl is-active --quiet python-polling.service
+            if [ $? -eq 0 ]; then
+              echo "✅ Python polling service is running!"
+            else
+              echo "❌ Python polling service failed to start!"
+              exit 1   # Fail the GitHub Actions workflow
+            fi
 
-            echo "✅ Deployment completed successfully!"
+            echo "📄 Last 50 lines of logs:"
+            sudo journalctl -u python-polling.service -n 50 --no-pager
