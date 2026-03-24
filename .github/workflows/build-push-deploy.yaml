@@ -46,29 +46,34 @@ jobs:
 
             # Create .env using secrets
             cat > .env <<EOF
-MSSQL_HOST=${{ secrets.MSSQL_HOST }}
-MSSQL_DATABASE=${{ secrets.MSSQL_DATABASE }}
-MSSQL_USERNAME=${{ secrets.MSSQL_USERNAME }}
-MSSQL_PASSWORD=${{ secrets.MSSQL_PASSWORD }}
+            echo "🔐 Creating .env file with GitHub Secrets..."
+            cat > .env <<EOF
+# ============================================================
+# Python Internal Service — Environment Configuration
+# ============================================================
 
-EXTERNAL_API_BASE_URL=${{ secrets.EXTERNAL_API_BASE_URL }}
+# SQL Server
+MSSQL_HOST=${{secrets.MSSQL_HOST}}
+MSSQL_DATABASE=${{secrets.MSSQL_DATABASE}}
+MSSQL_USERNAME=${{secrets.MSSQL_USERNAME}}
+MSSQL_PASSWORD=${{secrets.MSSQL_PASSWORD}}
 
+# External API
+EXTERNAL_API_BASE_URL=${{secrets.EXTERNAL_API_BASE_URL}}
+
+# Polling / Service Behaviour
 POLL_INTERVAL_SECONDS=5
 MAX_CONCURRENT_JOBS=3
 REQUEST_TIMEOUT_SECONDS=120
 MAX_RETRIES=3
 RETRY_DELAY_SECONDS=5.0
 
-APIM_SUBSCRIPTION_KEY=${{ secrets.APIM_SUBSCRIPTION_KEY }}
+# APIM Subscription Key
+APIM_SUBSCRIPTION_KEY=${{secrets.APIM_SUBSCRIPTION_KEY}}
 
+# Logging
 LOG_LEVEL=INFO
 LOG_FILE=logs/service.log
 EOF
 
             chmod 600 .env
-
-            # Restart service
-            pkill -f main.py || true
-            nohup python3 main.py > service.log 2>&1 &
-
-            echo "✅ Deployment completed successfully!"
