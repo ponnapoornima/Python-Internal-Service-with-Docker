@@ -3,65 +3,65 @@ name: Deploy Python Internal Service to VM
 on:
   push:
     branches:
-      - developer   # Change if you want dev branch deployment
+      - developer   # change to the branch you want to trigger deployment
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    # Step 1: Checkout local workflow repo (CI purposes)
-    - name: Checkout Repository
-      uses: actions/checkout@v3
+      # Step 1: Checkout workflow repo (optional for CI)
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-    # Step 2: Connect to VM and deploy service
-    - name: Deploy to VM
-      uses: appleboy/ssh-action@v0.1.5
-      with:
-        host: ${{ secrets.VM_HOST }}           # VM public IP
-        username: ${{ secrets.VM_USER }}       # VM username
-        key: ${{ secrets.SSH_PRIVATE_KEY }}    # SSH private key for VM
-        script: |
-          echo "🚀 Connecting to VM..."
+      # Step 2: Connect to VM and deploy service
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.VM_HOST }}           # VM public IP
+          username: ${{ secrets.VM_USER }}       # VM username
+          key: ${{ secrets.SSH_PRIVATE_KEY }}    # SSH private key for VM
+          script: |
+            echo "🚀 Connecting to VM..."
 
-          cd /home/${{ secrets.VM_USER }}
+            cd /home/${{ secrets.VM_USER }}
 
-          # Setup SSH key for GitHub repo
-          echo "${{ secrets.GITHUB_DEPLOY_KEY }}" > deploy_key
-          chmod 600 deploy_key
-          eval "$(ssh-agent -s)"
-          ssh-add deploy_key
+            # Setup SSH key for GitHub repo
+            echo "${{ secrets.GITHUB_DEPLOY_KEY }}" > deploy_key
+            chmod 600 deploy_key
+            eval "$(ssh-agent -s)"
+            ssh-add deploy_key
 
-          # Add GitHub to known_hosts to avoid prompt
-          mkdir -p ~/.ssh
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
+            # Add GitHub to known_hosts to avoid prompt
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-          # Clone repo if it doesn't exist
-          if [ ! -d "python-internal-service" ]; then
-            git clone git@github.com:CleavelandPrice-3KT/Automated-DCR-Backend-Service.git python-internal-service
-          fi
+            # Clone repo if it doesn't exist
+            if [ ! -d "python-internal-service" ]; then
+              git clone git@github.com:CleavelandPrice-3KT/Automated-DCR-Backend-Service.git python-internal-service
+            fi
 
-          cd python-internal-service
+            cd python-internal-service
 
-          echo "📥 Pulling latest code..."
-          git pull origin main
+            echo "📥 Pulling latest code..."
+            git pull origin main
 
-          echo "📦 Installing system packages..."
-          sudo apt update
-          sudo apt install -y python3 python3-venv python3-pip git
+            echo "📦 Installing system packages..."
+            sudo apt update
+            sudo apt install -y python3 python3-venv python3-pip git
 
-          echo "🐍 Setting up Python virtual environment..."
-          if [ ! -d "venv" ]; then
-            python3 -m venv venv
-          fi
-          source venv/bin/activate
+            echo "🐍 Setting up Python virtual environment..."
+            if [ ! -d "venv" ]; then
+              python3 -m venv venv
+            fi
+            source venv/bin/activate
 
-          echo "📥 Installing Python dependencies..."
-          pip install --upgrade pip
-          pip install -r requirements.txt
+            echo "📥 Installing Python dependencies..."
+            pip install --upgrade pip
+            pip install -r requirements.txt
 
-          echo "🔐 Creating .env file with GitHub Secrets..."
-          cat > .env <<EOF
+            echo "🔐 Creating .env file with GitHub Secrets..."
+            cat > .env <<EOF
 # ============================================================
 # Python Internal Service — Environment Configuration
 # ============================================================
@@ -90,11 +90,11 @@ LOG_LEVEL=INFO
 LOG_FILE=logs/service.log
 EOF
 
-          chmod 600 .env
+            chmod 600 .env
 
-          echo "🔄 Running Python service..."
-          # Stop previous instance if running (optional)
-          pkill -f main.py || true
-          nohup python3 main.py > service.log 2>&1 &
+            echo "🔄 Running Python service..."
+            # Stop previous instance if running
+            pkill -f main.py || true
+            nohup python3 main.py > service.log 2>&1 &
 
-          echo "✅ Deployment completed successfully!"
+            echo "✅ Deployment completed successfully!"
