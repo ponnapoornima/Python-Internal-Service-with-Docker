@@ -10,13 +10,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repository
+      # Step 1: Checkout workflow repo (optional, only needed if workflow uses repo code)
       - name: Checkout Repository
         uses: actions/checkout@v3
 
       # Step 2: SSH into VM and deploy service
       - name: Deploy to VM
-        uses: appleboy/ssh-action@v0.1.5
+        uses: appleboy/ssh-action@v0.1.6
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
@@ -28,9 +28,9 @@ jobs:
 
             cd /home/$VM_USER
 
-            # Clone repo if missing
+            # Clone repo if missing (HTTPS + PAT)
             if [ ! -d "python-internal-service" ]; then
-              git clone git@github.com:CleavelandPrice-3KT/Automated-DCR-Backend-Service.git python-internal-service
+              git clone https://${{ secrets.PAT }}@github.com/ponnapoornima/python-internal-service.git python-internal-service
             fi
 
             cd python-internal-service
