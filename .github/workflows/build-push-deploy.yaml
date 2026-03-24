@@ -24,6 +24,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
+            VM_USER="${{ secrets.VM_USER }}"
+
             cd ~
 
             # Clone repo if it does not exist
@@ -46,22 +48,22 @@ jobs:
               python3 -m venv venv
             fi
 
-            # Activate virtual environment and install Python requirements
+            # Activate virtual environment and install requirements
             source venv/bin/activate
             pip install --upgrade pip
             pip install -r requirements.txt
 
             # Create or update systemd service
             SERVICE_FILE="/etc/systemd/system/python-polling.service"
-            sudo tee $SERVICE_FILE > /dev/null << 'EOL'
+            sudo tee $SERVICE_FILE > /dev/null << EOL
 [Unit]
 Description=Python Internal Polling Service
 After=network.target
 
 [Service]
-User=${{ secrets.VM_USER }}
-WorkingDirectory=/home/${{ secrets.VM_USER }}/Internal-Python-Service
-ExecStart=/home/${{ secrets.VM_USER }}/Internal-Python-Service/venv/bin/python main.py
+User=$VM_USER
+WorkingDirectory=/home/$VM_USER/Internal-Python-Service
+ExecStart=/home/$VM_USER/Internal-Python-Service/venv/bin/python main.py
 Restart=always
 RestartSec=5
 
