@@ -10,12 +10,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout workflow repo (optional, only needed if workflow uses repo code)
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Step 2: SSH into VM and deploy service
-      - name: Deploy to VM
+      - name: Deploy and Configure Polling Service on VM
         uses: appleboy/ssh-action@v0.1.6
         with:
           host: ${{ secrets.VM_HOST }}
@@ -25,6 +23,7 @@ jobs:
           script: |
             VM_USER="${{ secrets.VM_USER }}"
             APP_DIR="/home/$VM_USER/python-internal-service"
+            SERVICE_FILE="/etc/systemd/system/python-polling.service"
 
             cd /home/$VM_USER
 
@@ -76,10 +75,29 @@ jobs:
 
             chmod 600 .env
 
-            echo "🔄 Restarting Python service..."
-            # Stop previous instance if running
-            pkill -f main.py || true
-            # Start new instance in background
-            nohup python3 main.py > service.log 2>&1 &
+            echo "🔧 Creating systemd service..."
+            sudo tee $SERVICE_FILE > /dev/null <<EOF
+            [Unit]
+            Description=Python Internal Polling Service
+            After=network.target
+
+            [Service]
+            User=$VM_USER
+            WorkingDirectory=$APP_DIR
+            ExecStart=$APP_DIR/venv/bin/python main.py
+            Restart=always
+            RestartSec=5
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            echo "🔄 Reloading systemd and starting service..."
+            sudo systemctl daemon-reload
+            sudo systemctl enable python-polling.service
+            sudo systemctl restart python-polling.service
+
+            echo "📄 Polling service status (last 50 lines):"
+            sudo journalctl -u python-polling.service -n 50 --no-pager
 
             echo "✅ Deployment completed successfully!"
