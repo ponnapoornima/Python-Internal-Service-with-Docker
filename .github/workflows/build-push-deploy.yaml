@@ -79,14 +79,6 @@ EOL
             # Confirm status
             sudo systemctl status python-polling.service --no-pager
 
-      # Step 3: Tail logs for confirmation (optional)
-      - name: Tail polling service logs
-        uses: appleboy/ssh-action@v0.1.6
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          script: |
+            # Tail last 50 lines of logs
             echo "Tailing last 50 lines of polling service logs..."
             sudo journalctl -u python-polling.service -n 50 --no-pager
