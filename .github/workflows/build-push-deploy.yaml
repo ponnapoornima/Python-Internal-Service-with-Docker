@@ -3,21 +3,19 @@ name: Deploy Python Internal Polling Service to VM
 on:
   push:
     branches:
-      - developer  # change if needed
+      - developer
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # fix Node.js 20 deprecation warning
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Step 2: SSH and deploy
       - name: Deploy and Start Polling Service on VM
         uses: appleboy/ssh-action@v0.1.6
         with:
@@ -28,7 +26,7 @@ jobs:
           script: |
             cd ~
 
-            # Clone repo if not exists
+            # Clone repo if it does not exist
             if [ ! -d "Internal-Python-Service" ]; then
               git clone https://github.com/CleavelandPrice-3KT/Internal-Python-Service.git
             fi
@@ -39,7 +37,7 @@ jobs:
             git fetch --all
             git reset --hard origin/developer
 
-            # Install dependencies
+            # Install system dependencies
             sudo apt update
             sudo apt install -y python3 python3-venv python3-pip git
 
@@ -48,7 +46,7 @@ jobs:
               python3 -m venv venv
             fi
 
-            # Activate virtual environment and install requirements
+            # Activate virtual environment and install Python requirements
             source venv/bin/activate
             pip install --upgrade pip
             pip install -r requirements.txt
@@ -71,14 +69,14 @@ RestartSec=5
 WantedBy=multi-user.target
 EOL
 
-            # Reload systemd, enable & restart service
+            # Reload systemd and restart service
             sudo systemctl daemon-reload
             sudo systemctl enable python-polling.service
             sudo systemctl restart python-polling.service
 
-            # Confirm status
+            # Show status
             sudo systemctl status python-polling.service --no-pager
 
             # Tail last 50 lines of logs
-            echo "Tailing last 50 lines of polling service logs..."
+            echo "Last 50 lines of polling service logs:"
             sudo journalctl -u python-polling.service -n 50 --no-pager
