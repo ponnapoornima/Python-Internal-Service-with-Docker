@@ -5,6 +5,9 @@ on:
     branches:
       - developer   # change to your deployment branch
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # avoid Node.js 20 deprecation warning
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -14,26 +17,26 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Step 2: Copy project to remote VM and run deployment
+      # Step 2: Deploy to VM over SSH
       - name: Deploy to VM
         uses: appleboy/ssh-action@v0.1.6
         with:
-          host: ${{ secrets.VM_HOST }}               # e.g., 20.197.0.254
-          username: ${{ secrets.VM_USER }}           # e.g., azureuser
-          key: ${{ secrets.VM_PEM_KEY }}             # private key contents
+          host: ${{ secrets.VM_HOST }}           # VM public IP
+          username: ${{ secrets.VM_USER }}       # VM SSH user
+          key: ${{ secrets.SSH_PRIVATE_KEY }}    # Private key contents
           port: 22
           script: |
-            # Navigate to home directory
+            # Navigate to home
             cd ~
 
-            # Clone repo (skip if folder exists)
+            # Clone repo if not exists
             if [ ! -d "Internal-Python-Service" ]; then
               git clone https://github.com/CleavelandPrice-3KT/Internal-Python-Service.git
             fi
 
             cd Internal-Python-Service
 
-            # Pull latest changes
+            # Reset to latest developer branch
             git fetch --all
             git reset --hard origin/developer
 
@@ -41,15 +44,24 @@ jobs:
             sudo apt update
             sudo apt install -y python3 python3-venv python3-pip git
 
-            # Create virtual environment
-            python3 -m venv venv
+            # Create virtual environment if not exists
+            if [ ! -d "venv" ]; then
+              python3 -m venv venv
+            fi
 
             # Activate virtual environment
             source venv/bin/activate
 
-            # Install Python requirements
+            # Upgrade pip and install requirements
             pip install --upgrade pip
             pip install -r requirements.txt
 
-            # Run the application
+            # Kill any existing Python service process
+            pkill -f main.py || true
+
+            # Start the service in background and log output
             nohup python main.py > app.log 2>&1 &
+
+            # Print confirmation
+            echo "Deployment complete. Current running process:"
+            pgrep -fl main.py
