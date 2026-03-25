@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Step 2: Deploy Python Polling Service on VM
+      # Step 2: Deploy to VM (ZERO-DOWNTIME)
       - name: Deploy Python Polling Service on VM
         uses: appleboy/ssh-action@v0.1.6
         with:
@@ -76,11 +76,16 @@ jobs:
 
             chmod 600 .env
 
-            echo "🔄 Restarting systemd service..."
-            sudo systemctl daemon-reload
-            sudo systemctl restart python-polling.service
+            echo "🔄 Ensuring service is running (NO downtime)..."
 
-      # Step 3: Verify service is running (NO restart here)
+            if systemctl is-active --quiet python-polling.service; then
+              echo "✅ Service already running — no restart needed"
+            else
+              echo "🚀 Service not running — starting now"
+              sudo systemctl start python-polling.service
+            fi
+
+      # Step 3: Verify service (NO restart here)
       - name: Verify Python Polling Service
         uses: appleboy/ssh-action@v0.1.6
         with:
