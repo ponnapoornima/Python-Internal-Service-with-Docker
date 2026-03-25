@@ -92,12 +92,50 @@ jobs:
             WantedBy=multi-user.target
             EOF
 
-            echo "🔄 Reloading systemd and starting service..."
-            sudo systemctl daemon-reload
-            sudo systemctl enable python-polling.service
-            sudo systemctl restart python-polling.service
+            echo "🔄 Ensuring service is running (NO downtime)..."
 
-            echo "📄 Polling service status (last 50 lines):"
-            sudo journalctl -u python-polling.service -n 50 --no-pager
+            if systemctl is-active --quiet python-polling.service; then
+              echo "✅ Service already running — no restart needed"
+            else
+              echo "🚀 Service not running — starting now"
+              sudo systemctl start python-polling.service
+            fi
 
-            echo "✅ Deployment completed successfully!"
+      # Step 3: Verify service (NO restart here)
+      - name: Verify Python Polling Service
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            SERVICE_NAME="python-polling.service"
+
+            echo "======================================"
+            echo "🔍 Checking if service is running..."
+            echo "======================================"
+
+            if systemctl is-active --quiet $SERVICE_NAME; then
+              echo "✅ Service is RUNNING"
+            else
+              echo "❌ Service is NOT running"
+              exit 1
+            fi
+
+            echo ""
+            echo "======================================"
+            echo "📊 Service Status"
+            echo "======================================"
+            sudo systemctl status $SERVICE_NAME --no-pager
+
+            echo ""
+            echo "======================================"
+            echo "📄 Last 30 Polling Logs"
+            echo "======================================"
+            sudo journalctl -u $SERVICE_NAME -n 30 --no-pager
+
+            echo ""
+            echo "======================================"
+            echo "✅ Verification Completed"
+            echo "======================================"
