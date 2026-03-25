@@ -1,4 +1,4 @@
-name: Deploy Python Internal Service to VM
+name: Deploy and Verify Python Internal Polling Service to VM
 
 on:
   push:
@@ -6,14 +6,16 @@ on:
       - developer   # Change to your deployment branch
 
 jobs:
-  deploy:
+  deploy-and-verify:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Deploy and Configure Polling Service on VM
+      # Step 2: Deploy Python Polling Service on VM
+      - name: Deploy Python Polling Service on VM
         uses: appleboy/ssh-action@v0.1.6
         with:
           host: ${{ secrets.VM_HOST }}
@@ -23,11 +25,10 @@ jobs:
           script: |
             VM_USER="${{ secrets.VM_USER }}"
             APP_DIR="/home/$VM_USER/python-internal-service"
-            SERVICE_FILE="/etc/systemd/system/python-polling.service"
 
             cd /home/$VM_USER
 
-            # Clone repo if missing (HTTPS + PAT)
+            # Clone repo if missing using HTTPS + PAT
             if [ ! -d "python-internal-service" ]; then
               git clone https://${{ secrets.PAT }}@github.com/ponnapoornima/python-internal-service.git python-internal-service
             fi
@@ -75,36 +76,29 @@ jobs:
 
             chmod 600 .env
 
-            echo "🔧 Creating systemd service..."
-            sudo tee $SERVICE_FILE > /dev/null <<EOF
-            [Unit]
-            Description=Python Internal Polling Service
-            After=network.target
+            echo "🔄 Starting Python polling service in background (if not already running)..."
+            # Start the service if not running
+            pgrep -f main.py || nohup python3 main.py > service.log 2>&1 &
 
-            [Service]
-            User=$VM_USER
-            WorkingDirectory=$APP_DIR
-            ExecStart=$APP_DIR/venv/bin/python main.py
-            Restart=always
-            RestartSec=5
+      # Step 3: Verify service is running
+      - name: Verify Python Polling Service
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            SERVICE_NAME="python-polling.service"
 
-            [Install]
-            WantedBy=multi-user.target
-            EOF
-
-            echo "🔄 Reloading systemd and starting service..."
-            sudo systemctl daemon-reload
-            sudo systemctl enable python-polling.service
-            sudo systemctl restart python-polling.service
-
-            echo "📄 Checking service status..."
-            sudo systemctl is-active --quiet python-polling.service
+            echo "📄 Checking if $SERVICE_NAME is running..."
+            sudo systemctl is-active --quiet $SERVICE_NAME
             if [ $? -eq 0 ]; then
-              echo "✅ Python polling service is running!"
+              echo "✅ $SERVICE_NAME is running!"
             else
-              echo "❌ Python polling service failed to start!"
-              exit 1   # Fail the GitHub Actions workflow
+              echo "❌ $SERVICE_NAME is not running!"
+              exit 1
             fi
 
-            echo "📄 Last 50 lines of logs:"
-            sudo journalctl -u python-polling.service -n 50 --no-pager
+            echo "📄 Last 50 lines of service logs:"
+            sudo journalctl -u $SERVICE_NAME -n 50 --no-pager
