@@ -116,6 +116,5 @@ jobs:
 
             echo ""
             echo "======================================"
-            echo "📡 Live Logs (5 seconds)"
+            echo "✅ Verification Completed"
             echo "======================================"
-            timeout 5 sudo journalctl -u $SERVICE_NAME -f --no-pager
