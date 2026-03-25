@@ -37,7 +37,7 @@ jobs:
             git reset --hard origin/developer
 
             sudo apt update
-            sudo apt install -y python3 python3-venv python3-pip git
+            sudo apt install -y python3 python3-venv python3-pip git curl
 
             echo "Installing ODBC drivers..."
             sudo apt install -y unixodbc unixodbc-dev
@@ -49,6 +49,7 @@ jobs:
             if [ ! -d "venv" ]; then
               python3 -m venv venv
             fi
+
             source venv/bin/activate
 
             pip install --upgrade pip
@@ -56,48 +57,49 @@ jobs:
 
             mkdir -p logs
 
-            cat > .env <<-EOF
-            MSSQL_HOST=${{ secrets.MSSQL_HOST }}
-            MSSQL_DATABASE=${{ secrets.MSSQL_DATABASE }}
-            MSSQL_USERNAME=${{ secrets.MSSQL_USERNAME }}
-            MSSQL_PASSWORD=${{ secrets.MSSQL_PASSWORD }}
-            EXTERNAL_API_BASE_URL=${{ secrets.EXTERNAL_API_BASE_URL }}
-            POLL_INTERVAL_SECONDS=5
-            MAX_CONCURRENT_JOBS=3
-            REQUEST_TIMEOUT_SECONDS=120
-            MAX_RETRIES=3
-            RETRY_DELAY_SECONDS=5.0
-            APIM_SUBSCRIPTION_KEY=${{ secrets.APIM_SUBSCRIPTION_KEY }}
-            LOG_LEVEL=INFO
-            LOG_FILE=logs/service.log
-            EOF
+            echo "Creating .env file..."
+            printf "%s\n" \
+            "MSSQL_HOST=${{ secrets.MSSQL_HOST }}" \
+            "MSSQL_DATABASE=${{ secrets.MSSQL_DATABASE }}" \
+            "MSSQL_USERNAME=${{ secrets.MSSQL_USERNAME }}" \
+            "MSSQL_PASSWORD=${{ secrets.MSSQL_PASSWORD }}" \
+            "EXTERNAL_API_BASE_URL=${{ secrets.EXTERNAL_API_BASE_URL }}" \
+            "POLL_INTERVAL_SECONDS=5" \
+            "MAX_CONCURRENT_JOBS=3" \
+            "REQUEST_TIMEOUT_SECONDS=120" \
+            "MAX_RETRIES=3" \
+            "RETRY_DELAY_SECONDS=5.0" \
+            "APIM_SUBSCRIPTION_KEY=${{ secrets.APIM_SUBSCRIPTION_KEY }}" \
+            "LOG_LEVEL=INFO" \
+            "LOG_FILE=logs/service.log" \
+            > .env
 
             chmod 600 .env
 
-            if [ ! -f "$SERVICE_FILE" ]; then
-              sudo tee $SERVICE_FILE > /dev/null <<-EOF
-              [Unit]
-              Description=Python Internal Polling Service
-              After=network.target
+            echo "Creating systemd service..."
+            sudo printf "%s\n" \
+            "[Unit]" \
+            "Description=Python Internal Polling Service" \
+            "After=network.target" \
+            "" \
+            "[Service]" \
+            "User=$VM_USER" \
+            "WorkingDirectory=$APP_DIR" \
+            "ExecStart=$APP_DIR/venv/bin/python main.py" \
+            "Restart=always" \
+            "RestartSec=5" \
+            "Environment=PYTHONUNBUFFERED=1" \
+            "" \
+            "[Install]" \
+            "WantedBy=multi-user.target" \
+            | sudo tee $SERVICE_FILE > /dev/null
 
-              [Service]
-              User=$VM_USER
-              WorkingDirectory=$APP_DIR
-              ExecStart=$APP_DIR/venv/bin/python main.py
-              Restart=always
-              RestartSec=5
-              Environment=PYTHONUNBUFFERED=1
-
-              [Install]
-              WantedBy=multi-user.target
-              EOF
-              sudo systemctl daemon-reload
-              sudo systemctl enable python-polling.service
-            fi
+            sudo systemctl daemon-reload
+            sudo systemctl enable python-polling.service
 
             sudo chown -R $VM_USER:$VM_USER $APP_DIR
 
-            sudo systemctl daemon-reload
+            echo "Restarting service..."
             sudo systemctl restart python-polling.service || true
 
             sleep 5
@@ -139,7 +141,7 @@ jobs:
 
             echo ""
             echo "======================================"
-            echo "Last 30 Polling Logs"
+            echo "Last 30 Logs"
             echo "======================================"
             sudo journalctl -u $SERVICE_NAME -n 30 --no-pager
 
