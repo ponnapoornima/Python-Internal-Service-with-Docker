@@ -3,7 +3,7 @@ name: Deploy and Verify Python Internal Polling Service to VM
 on:
   push:
     branches:
-      - developer   # Change to your deployment branch
+      - developer
 
 jobs:
   deploy-and-verify:
@@ -28,7 +28,7 @@ jobs:
 
             cd /home/$VM_USER
 
-            # Clone repo if missing using HTTPS + PAT
+            # Clone repo if missing
             if [ ! -d "python-internal-service" ]; then
               git clone https://${{ secrets.PAT }}@github.com/ponnapoornima/python-internal-service.git python-internal-service
             fi
@@ -76,11 +76,11 @@ jobs:
 
             chmod 600 .env
 
-            echo "🔄 Starting Python polling service in background (if not already running)..."
-            # Start the service if not running
-            pgrep -f main.py || nohup python3 main.py > service.log 2>&1 &
+            echo "🔄 Restarting systemd service..."
+            sudo systemctl daemon-reload
+            sudo systemctl restart python-polling.service
 
-      # Step 3: Verify service is running
+      # Step 3: Verify service is running (NO restart here)
       - name: Verify Python Polling Service
         uses: appleboy/ssh-action@v0.1.6
         with:
@@ -91,14 +91,31 @@ jobs:
           script: |
             SERVICE_NAME="python-polling.service"
 
-            echo "📄 Checking if $SERVICE_NAME is running..."
-            sudo systemctl is-active --quiet $SERVICE_NAME
-            if [ $? -eq 0 ]; then
-              echo "✅ $SERVICE_NAME is running!"
+            echo "======================================"
+            echo "🔍 Checking if service is running..."
+            echo "======================================"
+
+            if systemctl is-active --quiet $SERVICE_NAME; then
+              echo "✅ Service is RUNNING"
             else
-              echo "❌ $SERVICE_NAME is not running!"
+              echo "❌ Service is NOT running"
               exit 1
             fi
 
-            echo "📄 Last 50 lines of service logs:"
-            sudo journalctl -u $SERVICE_NAME -n 50 --no-pager
+            echo ""
+            echo "======================================"
+            echo "📊 Service Status"
+            echo "======================================"
+            sudo systemctl status $SERVICE_NAME --no-pager
+
+            echo ""
+            echo "======================================"
+            echo "📄 Last 30 Polling Logs"
+            echo "======================================"
+            sudo journalctl -u $SERVICE_NAME -n 30 --no-pager
+
+            echo ""
+            echo "======================================"
+            echo "📡 Live Logs (5 seconds)"
+            echo "======================================"
+            timeout 5 sudo journalctl -u $SERVICE_NAME -f --no-pager
