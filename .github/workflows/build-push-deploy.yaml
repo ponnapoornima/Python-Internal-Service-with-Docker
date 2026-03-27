@@ -3,7 +3,7 @@ name: Deploy and Verify Python Internal Polling Service to VM
 on:
   push:
     branches:
-      - developer
+      - development
   workflow_dispatch:
 
 jobs:
