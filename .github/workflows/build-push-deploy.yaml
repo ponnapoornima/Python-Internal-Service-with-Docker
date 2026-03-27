@@ -3,7 +3,7 @@ name: Deploy and Verify Python Internal Polling Service on VM with Docker
 on:
   push:
     branches:
-      - test
+      - development
   workflow_dispatch:
 
 jobs:
